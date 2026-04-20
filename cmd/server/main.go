@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,12 +16,13 @@ import (
 )
 
 type server struct {
-	root      string
-	workspace string
-	runRoot   string
-	model     string
-	mu        sync.RWMutex
-	runs      map[string]agent.RunResult
+	root          string
+	workspace     string
+	runRoot       string
+	model         string
+	allowedOrigin string
+	mu            sync.RWMutex
+	runs          map[string]agent.RunResult
 }
 
 type runRequest struct {
@@ -36,23 +36,33 @@ func main() {
 		log.Fatal(err)
 	}
 	s := &server{
-		root:      root,
-		workspace: filepath.Join(root, "workspace"),
-		runRoot:   filepath.Join(root, ".codeact", "runs"),
-		model:     envOr("CODEACT_MODEL", "gpt-5.4-mini"),
-		runs:      map[string]agent.RunResult{},
+		root:          root,
+		workspace:     filepath.Join(root, "workspace"),
+		runRoot:       filepath.Join(root, ".codeact", "runs"),
+		model:         envOr("CODEACT_MODEL", "gpt-5.4-mini"),
+		allowedOrigin: envOr("CODEACT_ALLOWED_ORIGIN", "*"),
+		runs:          map[string]agent.RunResult{},
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/api/runs", s.handleRuns)
 	mux.HandleFunc("/api/runs/", s.handleRunByID)
 	mux.HandleFunc("/", s.handleStatic)
 
-	addr := envOr("CODEACT_ADDR", ":8080")
-	log.Printf("CodeAct Agent listening on http://localhost%s", addr)
-	if err := http.ListenAndServe(addr, withCORS(mux)); err != nil {
+	addr := listenAddr()
+	log.Printf("CodeAct Agent listening on %s", addr)
+	if err := http.ListenAndServe(addr, s.withCORS(mux)); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *server) handleRuns(w http.ResponseWriter, r *http.Request) {
@@ -187,9 +197,9 @@ func (s *server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, index)
 }
 
-func withCORS(next http.Handler) http.Handler {
+func (s *server) withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Origin", s.allowedOrigin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		next.ServeHTTP(w, r)
@@ -213,4 +223,9 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-var errNotFound = errors.New("not found")
+func listenAddr() string {
+	if port := os.Getenv("PORT"); port != "" {
+		return ":" + port
+	}
+	return envOr("CODEACT_ADDR", ":8080")
+}

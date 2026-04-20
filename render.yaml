@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: codeact-agent-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: CODEACT_MODEL
+        value: gpt-5.4-mini
+      - key: CODEACT_ALLOWED_ORIGIN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
