@@ -1,0 +1,5 @@
+.codeact/
+.env
+workspace/report-*.md
+web/node_modules/
+web/dist/

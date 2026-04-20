@@ -1,0 +1,7 @@
+2026-04-19T10:00:00Z INFO api service started
+2026-04-19T10:01:10Z WARN request latency above target path=/identity
+2026-04-19T10:02:03Z ERROR provider timeout provider=kyc attempt=1
+2026-04-19T10:02:19Z INFO retry scheduled provider=kyc
+2026-04-19T10:03:11Z ERROR retry failed provider=kyc code=504
+2026-04-19T10:04:45Z WARN queue depth high queue=webhooks depth=130
+2026-04-19T10:05:22Z INFO queue recovered queue=webhooks depth=12

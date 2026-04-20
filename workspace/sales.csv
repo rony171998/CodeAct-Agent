@@ -1,0 +1,7 @@
+date,category,amount,region
+2026-04-17,api,120.50,north
+2026-04-17,kyc,85.00,south
+2026-04-18,api,220.00,north
+2026-04-18,kyc,40.25,west
+2026-04-19,api,90.00,south
+2026-04-19,alerts,30.75,west
