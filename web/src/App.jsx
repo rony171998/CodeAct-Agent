@@ -6,6 +6,7 @@ const sampleGoals = {
 };
 
 const samples = ["sample.log", "sales.csv"];
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
 function App() {
   const [inputFile, setInputFile] = useState("sample.log");
@@ -25,7 +26,7 @@ function App() {
     setError("");
     setResult(null);
     try {
-      const response = await fetch("/api/runs", {
+      const response = await fetch(`${apiBaseUrl}/api/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ goal, inputFile }),

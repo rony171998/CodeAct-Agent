@@ -1,5 +1,10 @@
 .codeact/
 .env
+.env.*
+!.env.example
+web/.env
+web/.env.*
+!web/.env.example
 workspace/report-*.md
 web/node_modules/
 web/dist/

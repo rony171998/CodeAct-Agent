@@ -73,6 +73,44 @@ CSV example:
 go run ./cmd/codeact -goal "summarize sales by category" -input sales.csv
 ```
 
+## Deploy
+
+Recommended split:
+
+- Vercel hosts the Vite frontend from `web`.
+- Render hosts the Go backend from the repository root.
+
+### Render backend
+
+Use the included `render.yaml` Blueprint.
+
+Required Render environment variables:
+
+```text
+OPENAI_API_KEY
+CODEACT_ALLOWED_ORIGIN
+```
+
+Optional:
+
+```text
+CODEACT_MODEL=gpt-5.4-mini
+```
+
+The backend uses Docker so the Go toolchain is available at runtime for generated actions.
+
+### Vercel frontend
+
+Deploy either the repository root with `vercel.json`, or the `web` directory directly.
+
+Required Vercel environment variable:
+
+```text
+VITE_API_BASE_URL=https://your-render-service.onrender.com
+```
+
+Do not commit real API keys or environment values.
+
 ## Interview script
 
 Use this short explanation:
