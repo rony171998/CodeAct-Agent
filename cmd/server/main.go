@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -89,7 +90,7 @@ func (s *server) handleRuns(w http.ResponseWriter, r *http.Request) {
 		req.InputFile = "sample.log"
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), runTimeout())
 	defer cancel()
 
 	result, err := agent.Run(ctx, agent.Config{
@@ -228,4 +229,12 @@ func listenAddr() string {
 		return ":" + port
 	}
 	return envOr("CODEACT_ADDR", ":8080")
+}
+
+func runTimeout() time.Duration {
+	seconds, err := strconv.Atoi(envOr("CODEACT_RUN_TIMEOUT_SECONDS", "240"))
+	if err != nil || seconds < 30 {
+		seconds = 240
+	}
+	return time.Duration(seconds) * time.Second
 }

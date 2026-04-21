@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -126,24 +127,66 @@ func runGoAction(ctx context.Context, actionPath, workspace, inputPath, reportPa
 		return "", err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, actionTimeout())
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, goBin, "run", actionPath)
-	cmd.Env = append(os.Environ(),
+	env := append(os.Environ(),
 		"CODEACT_WORKSPACE="+workspace,
 		"CODEACT_INPUT_FILE="+inputPath,
 		"CODEACT_REPORT_PATH="+reportPath,
 	)
+	env = withGoCache(env)
 
 	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err = cmd.Run()
+	binaryPath := filepath.Join(filepath.Dir(actionPath), actionBinaryName(actionPath))
+
+	build := exec.CommandContext(ctx, goBin, "build", "-o", binaryPath, actionPath)
+	build.Env = env
+	build.Stdout = &out
+	build.Stderr = &out
+	if err := build.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return out.String(), ctx.Err()
+		}
+		return out.String(), err
+	}
+
+	run := exec.CommandContext(ctx, binaryPath)
+	run.Env = env
+	run.Stdout = &out
+	run.Stderr = &out
+	err = run.Run()
 	if ctx.Err() == context.DeadlineExceeded {
 		return out.String(), ctx.Err()
 	}
 	return out.String(), err
+}
+
+func actionTimeout() time.Duration {
+	seconds, err := strconv.Atoi(envOr("CODEACT_ACTION_TIMEOUT_SECONDS", "120"))
+	if err != nil || seconds < 10 {
+		seconds = 120
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func actionBinaryName(actionPath string) string {
+	name := strings.TrimSuffix(filepath.Base(actionPath), filepath.Ext(actionPath))
+	if filepath.Separator == '\\' {
+		return name + ".exe"
+	}
+	return name
+}
+
+func withGoCache(env []string) []string {
+	for _, item := range env {
+		if strings.HasPrefix(item, "GOCACHE=") {
+			return env
+		}
+	}
+	cacheDir := envOr("CODEACT_GO_CACHE", filepath.Join(os.TempDir(), "codeact-go-build-cache"))
+	_ = os.MkdirAll(cacheDir, 0o755)
+	return append(env, "GOCACHE="+cacheDir)
 }
 
 func goCommand() (string, error) {

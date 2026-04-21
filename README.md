@@ -95,6 +95,8 @@ Optional:
 
 ```text
 CODEACT_MODEL=gpt-5.4-mini
+CODEACT_RUN_TIMEOUT_SECONDS=240
+CODEACT_ACTION_TIMEOUT_SECONDS=120
 ```
 
 The backend uses Docker so the Go toolchain is available at runtime for generated actions.
