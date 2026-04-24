@@ -40,6 +40,12 @@ type responsesResponse struct {
 	} `json:"error,omitempty"`
 }
 
+type ProviderStatus struct {
+	Available bool   `json:"available"`
+	State     string `json:"state"`
+	Message   string `json:"message"`
+}
+
 func newOpenAIClient(model string) (*openAIClient, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
@@ -54,6 +60,54 @@ func newOpenAIClient(model string) (*openAIClient, error) {
 		model:   model,
 		client:  &http.Client{Timeout: 60 * time.Second},
 	}, nil
+}
+
+func CheckOpenAIAvailability(ctx context.Context, model string) ProviderStatus {
+	client, err := newOpenAIClient(model)
+	if err != nil {
+		return ProviderStatus{
+			Available: false,
+			State:     "missing_key",
+			Message:   err.Error(),
+		}
+	}
+
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(checkCtx, http.MethodGet, client.baseURL+"/models", nil)
+	if err != nil {
+		return ProviderStatus{
+			Available: false,
+			State:     "request_error",
+			Message:   err.Error(),
+		}
+	}
+	req.Header.Set("Authorization", "Bearer "+client.apiKey)
+
+	resp, err := client.client.Do(req)
+	if err != nil {
+		return ProviderStatus{
+			Available: false,
+			State:     "request_error",
+			Message:   err.Error(),
+		}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return ProviderStatus{
+			Available: false,
+			State:     "request_error",
+			Message:   fmt.Sprintf("OpenAI status check failed: %s", resp.Status),
+		}
+	}
+
+	return ProviderStatus{
+		Available: true,
+		State:     "available",
+		Message:   "OpenAI reachable",
+	}
 }
 
 func (c *openAIClient) generateAction(ctx context.Context, prompt string) (string, error) {
