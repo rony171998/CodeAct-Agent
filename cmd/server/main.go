@@ -31,6 +31,17 @@ type runRequest struct {
 	InputFile string `json:"inputFile"`
 }
 
+type statusResponse struct {
+	Backend serviceStatus `json:"backend"`
+	AI      serviceStatus `json:"ai"`
+}
+
+type serviceStatus struct {
+	Available bool   `json:"available"`
+	State     string `json:"state"`
+	Message   string `json:"message"`
+}
+
 func main() {
 	root, err := os.Getwd()
 	if err != nil {
@@ -47,6 +58,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
+	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/runs", s.handleRuns)
 	mux.HandleFunc("/api/runs/", s.handleRunByID)
 	mux.HandleFunc("/", s.handleStatic)
@@ -64,6 +76,31 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	aiStatus := agent.CheckOpenAIAvailability(r.Context(), s.model)
+	writeJSON(w, http.StatusOK, statusResponse{
+		Backend: serviceStatus{
+			Available: true,
+			State:     "available",
+			Message:   "Server reachable",
+		},
+		AI: serviceStatus{
+			Available: aiStatus.Available,
+			State:     aiStatus.State,
+			Message:   aiStatus.Message,
+		},
+	})
 }
 
 func (s *server) handleRuns(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const sampleGoals = {
   "sample.log": "analyze errors and warnings in this log",
@@ -14,11 +14,47 @@ function App() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [serviceStatus, setServiceStatus] = useState({
+    loading: true,
+    backend: { available: false, state: "checking", message: "Checking backend" },
+    ai: { available: false, state: "checking", message: "Checking AI" },
+  });
 
   const latestStep = useMemo(() => {
     if (!result?.steps?.length) return null;
     return result.steps[result.steps.length - 1];
   }, [result]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadStatus() {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/status`);
+        const data = await response.json();
+        if (!ignore) {
+          setServiceStatus({
+            loading: false,
+            backend: data.backend,
+            ai: data.ai,
+          });
+        }
+      } catch (err) {
+        if (!ignore) {
+          setServiceStatus({
+            loading: false,
+            backend: { available: false, state: "request_error", message: err.message },
+            ai: { available: false, state: "unknown", message: "Status unavailable" },
+          });
+        }
+      }
+    }
+
+    loadStatus();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   async function runAgent(event) {
     event.preventDefault();
@@ -63,6 +99,19 @@ function App() {
           <Status label="Runtime" value="Go" />
           <Status label="Mode" value="Web + CLI" />
         </div>
+      </section>
+
+      <section className="service-strip">
+        <ServiceStatusCard
+          label="Server"
+          status={serviceStatus.backend}
+          loading={serviceStatus.loading}
+        />
+        <ServiceStatusCard
+          label="AI"
+          status={serviceStatus.ai}
+          loading={serviceStatus.loading}
+        />
       </section>
 
       <section className="workspace">
@@ -118,6 +167,23 @@ function Status({ label, value }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function ServiceStatusCard({ label, status, loading }) {
+  const available = !loading && status?.available;
+  const toneClass = loading ? "status-tone-checking" : available ? "status-tone-up" : "status-tone-down";
+  const value = loading ? "Checking" : available ? "Available" : "Unavailable";
+
+  return (
+    <article className="service-card">
+      <div className={`status-dot ${toneClass}`} aria-hidden="true" />
+      <div>
+        <p className="service-label">{label}</p>
+        <strong className="service-value">{value}</strong>
+        <p className="service-message">{status?.message || ""}</p>
+      </div>
+    </article>
   );
 }
 
