@@ -1,150 +1,123 @@
 # CodeAct Agent
 
-CodeAct Agent is a Go + React demo of the code-as-action pattern.
+A Go + React demo of the **code-as-action** pattern: instead of calling a fixed set of tools, the agent asks a model to *write a program*, executes it, and retries with the execution feedback if it fails.
 
-Instead of calling fixed tools, the agent asks a model to write a small Go program, runs that program, captures the result, and retries with execution feedback if needed.
+A frontend build is deployed at [codeact-agent.vercel.app](https://codeact-agent.vercel.app), but the Render backend it talks to is on a free tier and currently not responding — the UI will show "Server: Unavailable" until it's redeployed. Run it locally (below) for the real thing.
 
-## What it does
+![CodeAct Agent UI showing the five stages of a run](docs/screenshot.png)
 
-This project is a data analyst agent for small files.
+## The pattern
 
-You choose a sample file, write a goal, and the app shows:
+Most agent frameworks give the model a fixed menu of tools (`search`, `read_file`, `run_sql`...) and the model picks one per step. CodeAct flips that: the model's only tool is a **general-purpose programming language**. Given a goal, it writes a small Go program that does whatever the task requires, the backend runs it, and the *real* output — including compiler and runtime errors — goes back to the model as feedback for the next attempt.
 
-1. User goal
-2. Prompt sent to the model
-3. Generated Go action
-4. Execution output
-5. Final report
+This project applies that pattern to a narrow, concrete case: a data analyst agent for small local files (`.log`, `.csv`).
 
-## Install
+```mermaid
+flowchart LR
+    A[User goal] --> B[Prompt built<br/>from goal + input file]
+    B --> C[Model writes<br/>a Go program]
+    C --> D[Backend runs it<br/>with go run]
+    D -->|success| E[Report saved<br/>to workspace]
+    D -->|error| B
+```
 
-Install Go:
+The UI exposes every stage of that loop instead of hiding it behind a spinner:
+
+1. **User goal** — the plain-language task
+2. **Prompt sent to model** — exactly what the model saw
+3. **Generated Go action** — the program the model wrote
+4. **Execution output** — what actually happened when it ran
+5. **Final report** — the markdown result written to the workspace
+
+## Stack
+
+| Layer | Tech |
+|---|---|
+| Agent loop / API | Go (`net/http`, no framework) |
+| Model provider | OpenAI Responses API |
+| Action runtime | `go run` against a sandboxed workspace directory |
+| Frontend | React 19 + Vite |
+| CLI | `cmd/codeact`, same agent loop, no server needed |
+
+## Run it locally
+
+Install Go and the frontend dependencies:
 
 ```powershell
 winget install --id GoLang.Go -e
+cd web && npm install && npm run build
 ```
 
-Install frontend dependencies:
-
-```powershell
-cd D:\rony\CodeAct-Agent\web
-npm install
-npm run build
-```
-
-## Configure OpenAI
-
-PowerShell:
+Set your OpenAI key:
 
 ```powershell
 $env:OPENAI_API_KEY="your_key"
-$env:CODEACT_MODEL="gpt-5.4-mini"
+$env:CODEACT_MODEL="gpt-5.4-mini"      # optional
+$env:OPENAI_BASE_URL="https://api.openai.com/v1"  # optional
 ```
 
-Optional:
+Run the web demo:
 
 ```powershell
-$env:OPENAI_BASE_URL="https://api.openai.com/v1"
-```
-
-## Run web demo
-
-```powershell
-cd D:\rony\CodeAct-Agent
 go run ./cmd/server
 ```
 
-Open:
+Open `http://localhost:8080`.
 
-```text
-http://localhost:8080
-```
-
-## Run CLI demo
+Or run the CLI directly, no server:
 
 ```powershell
-cd D:\rony\CodeAct-Agent
 go run ./cmd/codeact -goal "analyze sample log"
+go run ./cmd/codeact -goal "summarize sales by category" -input sales.csv
 ```
 
-CSV example:
+## Try it
 
-```powershell
-go run ./cmd/codeact -goal "summarize sales by category" -input sales.csv
+1. Pick `sample.log` as the input file.
+2. Enter a goal: `analyze errors and warnings in this log`.
+3. Click **Run agent**.
+4. Watch the five panels fill in — prompt, generated code, execution output, report.
+5. If the generated code fails to compile or panics, the agent automatically retries with the error as feedback.
+
+## API
+
+```
+POST /api/runs
+  body:     { "goal": "...", "inputFile": "sample.log" }
+  response: run result with prompt, generated code, output, report, status
+
+GET /api/runs/{id}
+  response: a previously saved run result
+
+GET /api/status
+  response: backend and model-provider availability, used by the UI status strip
+```
+
+## Project structure
+
+```
+cmd/codeact      CLI entrypoint — same agent loop, no HTTP server
+cmd/server       Web/API server, serves the built React app
+internal/agent   The CodeAct loop and the OpenAI provider
+web              React frontend (Vite)
+workspace        Sample input files and generated reports
 ```
 
 ## Deploy
 
-Recommended split:
+Split deployment: Vercel for the static frontend, Render for the Go backend (it needs the Go toolchain at runtime to execute generated actions).
 
-- Vercel hosts the Vite frontend from `web`.
-- Render hosts the Go backend from the repository root.
+**Render (backend)** — uses the included `render.yaml` Blueprint.
 
-### Render backend
+Required env vars: `OPENAI_API_KEY`, `CODEACT_ALLOWED_ORIGIN`
+Optional: `CODEACT_MODEL`, `CODEACT_RUN_TIMEOUT_SECONDS`, `CODEACT_ACTION_TIMEOUT_SECONDS`
 
-Use the included `render.yaml` Blueprint.
+**Vercel (frontend)** — deploy the repo root (`vercel.json`) or the `web` directory directly.
 
-Required Render environment variables:
+Required env var: `VITE_API_BASE_URL=https://your-render-service.onrender.com`
 
-```text
-OPENAI_API_KEY
-CODEACT_ALLOWED_ORIGIN
-```
-
-Optional:
-
-```text
-CODEACT_MODEL=gpt-5.4-mini
-CODEACT_RUN_TIMEOUT_SECONDS=240
-CODEACT_ACTION_TIMEOUT_SECONDS=120
-```
-
-The backend uses Docker so the Go toolchain is available at runtime for generated actions.
-
-### Vercel frontend
-
-Deploy either the repository root with `vercel.json`, or the `web` directory directly.
-
-Required Vercel environment variable:
-
-```text
-VITE_API_BASE_URL=https://your-render-service.onrender.com
-```
-
-Do not commit real API keys or environment values.
-
-## Interview script
-
-Use this short explanation:
-
-```text
-This is a CodeAct agent. It receives a goal, builds a prompt, asks the model for a Go program, saves that program as an action, executes it with go run, and shows the output. If the generated code fails, the agent sends the error back to the model and asks for a corrected action. The action writes a markdown report inside the workspace.
-```
-
-Demo steps:
-
-1. Open the web app.
-2. Select `sample.log`.
-3. Enter `analyze errors and warnings in this log`.
-4. Click Run.
-5. Show the prompt.
-6. Show the generated Go code.
-7. Show the execution output.
-8. Show the final report.
-9. Explain that the generated code is the action.
-
-## Project structure
-
-```text
-cmd/codeact      CLI entrypoint
-cmd/server       Web/API server
-internal/agent   CodeAct loop and OpenAI provider
-web              React frontend
-workspace        Sample files and generated reports
-```
+Never commit real API keys or `.env` files.
 
 ## Security
 
-Generated code runs locally. Only use a controlled workspace.
-
-Do not commit `.env`, API keys, generated runs, or generated reports.
+Generated code runs locally with no sandboxing beyond the workspace directory convention — only point this at a controlled workspace, never at arbitrary user-supplied paths. Do not commit `.env`, API keys, generated runs, or generated reports.
